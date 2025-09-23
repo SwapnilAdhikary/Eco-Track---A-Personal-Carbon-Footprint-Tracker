@@ -1,0 +1,77 @@
+// backend/index.js import express from "express"; import sqlite3 from "sqlite3"; import { open } from "sqlite"; import cors from "cors";
+
+const app = express(); const PORT = 4000;
+
+// Middleware app.use(cors()); app.use(express.json());
+
+// Database setup let db; (async () => { db = await open({ filename: "./ecotrack.db", driver: sqlite3.Database, });
+
+await db.exec(CREATE TABLE IF NOT EXISTS activities ( id INTEGER PRIMARY KEY AUTOINCREMENT, activity TEXT, value REAL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP );); })();
+
+// Routes app.get("/activities", async (req, res) => { const activities = await db.all("SELECT * FROM activities ORDER BY created_at DESC"); res.json(activities); });
+
+app.post("/activities", async (req, res) => { const { activity, value } = req.body; if (!activity || !value) return res.status(400).json({ error: "Missing fields" });
+
+await db.run("INSERT INTO activities (activity, value) VALUES (?, ?)", [activity, value]); res.json({ message: "Activity logged successfully" }); });
+
+app.delete("/activities/:id", async (req, res) => { const { id } = req.params; await db.run("DELETE FROM activities WHERE id = ?", [id]); res.json({ message: "Activity deleted" }); });
+
+// Start server app.listen(PORT, () => { console.log(EcoTrack backend running at http://localhost:${PORT}); });
+
+// ================= FRONTEND (React) ================= import { useState, useEffect } from "react"; import { Card, CardContent } from "@/components/ui/card"; import { Button } from "@/components/ui/button"; import { Input } from "@/components/ui/input"; import { PieChart, Pie, Cell, Tooltip } from "recharts";
+
+export default function EcoTrack() { const [activity, setActivity] = useState(""); const [value, setValue] = useState(""); const [logs, setLogs] = useState([]);
+
+const COLORS = ["#4ade80", "#60a5fa", "#f87171", "#facc15"];
+
+const fetchLogs = async () => { const res = await fetch("http://localhost:4000/activities"); const data = await res.json(); setLogs(data); };
+
+const addLog = async () => { if (!activity || !value) return; await fetch("http://localhost:4000/activities", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activity, value: Number(value) }), }); setActivity(""); setValue(""); fetchLogs(); };
+
+useEffect(() => { fetchLogs(); }, []);
+
+return ( <div className="min-h-screen bg-gray-100 flex flex-col items-center p-6"> <h1 className="text-3xl font-bold mb-6">🌍 EcoTrack Dashboard</h1>
+
+<Card className="w-full max-w-md p-4 mb-6">
+    <CardContent className="flex flex-col gap-3">
+      <Input
+        placeholder="Activity (e.g. Car Travel)"
+        value={activity}
+        onChange={(e) => setActivity(e.target.value)}
+      />
+      <Input
+        type="number"
+        placeholder="Value (km/kWh/meals)"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <Button onClick={addLog}>Add Activity</Button>
+    </CardContent>
+  </Card>
+
+  <Card className="w-full max-w-lg p-4">
+    <CardContent>
+      <h2 className="text-xl font-semibold mb-4">Your Carbon Breakdown</h2>
+      <PieChart width={350} height={300}>
+        <Pie
+          data={logs}
+          dataKey="value"
+          nameKey="activity"
+          cx="50%"
+          cy="50%"
+          outerRadius={100}
+          fill="#8884d8"
+          label
+        >
+          {logs.map((entry, index) => (
+            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+          ))}
+        </Pie>
+        <Tooltip />
+      </PieChart>
+    </CardContent>
+  </Card>
+</div>
+
+); }
+
